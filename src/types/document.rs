@@ -9,7 +9,7 @@ pub struct Section {
     pub blocks: Vec<Block>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct SectionProperties {
     pub page_size: (f32, f32),
     pub orientation: Orientation,

@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 docx-rs = "0.4"
+docx-lite = "0.2.0"
+undoc = "0.2.0"

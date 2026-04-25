@@ -1,5 +1,5 @@
 use crate::{parser::Parser, types::document::Document};
-use docx_rs::{DocumentChild, Paragraph, ParagraphChild, read_docx};
+use docx_rs::{DocumentChild, ParagraphChild, read_docx};
 
 pub struct DocumentParser;
 
