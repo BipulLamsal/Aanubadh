@@ -7,3 +7,5 @@ edition = "2024"
 docx-rs = "0.4"
 docx-lite = "0.2.0"
 undoc = "0.2.0"
+pdf_oxide = "0.3.38"
+
