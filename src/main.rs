@@ -2,7 +2,9 @@ use docx_rs::{self, DocumentChild, Docx, ParagraphChild, RunChild};
 use std::{
     fs::File,
     io::{BufReader, Read},
+    sync::Arc,
 };
+use tokio::sync::Semaphore;
 
 const sep: &str = "@#@";
 
@@ -34,6 +36,8 @@ impl DocXReader {
 
         let mut handler = Vec::new();
 
+        let semaphore = Arc::new(Semaphore::new(self.concurrent_request_size));
+
         for child in &mut self.doc.document.children {
             let para = match child {
                 DocumentChild::Paragraph(p) => &mut **p,
@@ -63,7 +67,7 @@ impl DocXReader {
                         let ret =
                             std::mem::replace(&mut chunk, Vec::with_capacity(self.chunk_size));
 
-                        handler.push(spawn_task_for_chunk(ret));
+                        handler.push(spawn_task_for_chunk(ret, semaphore.clone()));
                     }
                 }
             }
@@ -71,7 +75,7 @@ impl DocXReader {
 
         // last chunk logic
         if !chunk.is_empty() {
-            handler.push(spawn_task_for_chunk(chunk));
+            handler.push(spawn_task_for_chunk(chunk, semaphore.clone()));
         }
 
         for handle in handler {
@@ -84,6 +88,7 @@ impl DocXReader {
 
 fn spawn_task_for_chunk(
     chunk: Vec<SendPtr>,
+    sem: Arc<Semaphore>,
 ) -> tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>> {
     tokio::spawn(async { Ok(()) })
 }
