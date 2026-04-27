@@ -1,4 +1,4 @@
-use docx_rs::{self, Document, DocumentChild, Docx, ParagraphChild, RunChild};
+use docx_rs::{self, DocumentChild, Docx, ParagraphChild, RunChild};
 use std::{
     fs::File,
     io::{BufReader, Read},
@@ -21,7 +21,7 @@ fn walk_run_children(run_children: &mut Vec<RunChild>) {
 struct DocXReader(Docx);
 
 impl DocXReader {
-    pub fn new<T: Read>(self, reader: T) -> Result<Self, Box<dyn std::error::Error>> {
+    pub fn from_reader<T: Read>(self, reader: T) -> Result<Self, Box<dyn std::error::Error>> {
         let mut buffer = Vec::new();
         let _ = BufReader::new(reader).read_to_end(&mut buffer);
         let doc = docx_rs::read_docx(&buffer)?;
@@ -57,10 +57,11 @@ impl DocXReader {
     fn walk_run_children(
         run_children: &mut Vec<RunChild>,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let text_vec: Vec<&str> = Vec::new();
         for child in run_children {
             match child {
-                RunChild::Text(txt) => {}
+                RunChild::Text(txt) => {
+                    println!("{:?}", txt);
+                }
                 _ => {}
             }
         }
@@ -71,7 +72,8 @@ impl DocXReader {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("/home/bedgirb/Downloads/test.docx")?;
-
+    let mut docx_reader = DocXReader::default().from_reader(file)?;
+    docx_reader.start_walk()?;
     /*
     let file = File::create("output.docx")?;
 
