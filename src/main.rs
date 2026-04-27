@@ -2,23 +2,14 @@ use docx_rs::{self, DocumentChild, Docx, ParagraphChild, RunChild};
 use std::{
     fs::File,
     io::{BufReader, Read},
-    sync::{Arc, RwLock},
-    thread,
 };
 
 const sep: &str = "@#@";
 
-fn walk_run_children(run_children: &mut Vec<RunChild>) {
-    for child in run_children {
-        match child {
-            RunChild::Text(txt) => {
-                txt.text.clear();
-                txt.text.push_str("World");
-            }
-            _ => {}
-        }
-    }
-}
+struct SendPtr(*mut String);
+// SAFTEY: they are send seperately for each threads so its safe for this case
+unsafe impl Send for SendPtr {}
+
 struct DocXReader {
     doc: Docx,
     chunk_size: usize,
@@ -36,10 +27,12 @@ impl DocXReader {
         })
     }
 
-    pub fn start_walk(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut chunk: Vec<*mut String> = Vec::new();
-        let mut con_request_handler: Vec<Vec<*mut String>> =
-            Vec::with_capacity(self.concurrent_request_size);
+    pub async fn start_walk(&mut self) -> Result<(), Box<dyn std::error::Error>> {
+        let mut chunk: Vec<SendPtr> = Vec::with_capacity(self.chunk_size);
+        // let mut con_request_handler: Vec<Vec<*mut String>> =
+        //    Vec::with_capacity(self.concurrent_request_size);
+
+        let mut handler = Vec::new();
 
         for child in &mut self.doc.document.children {
             let para = match child {
@@ -61,29 +54,45 @@ impl DocXReader {
                     }
                     println!("{:?}", txt.text);
                     // we keep of adding until we hit the chunk size limit
-                    chunk.push(&mut txt.text as *mut String);
+                    chunk.push(SendPtr(&mut txt.text as *mut String));
 
                     // if we hit the limit
                     // its the time to combine the chunks and make it as string with a sep, run a thread able to call tranlsation
                     if chunk.len() >= self.chunk_size {
-                        // we push this to our request_handler
-                        con_request_handler.push(chunk);
-                        // and we reset the chunk for next iteration
-                        chunk = Vec::new();
+                        // we reset the chunk for next iteration
+                        let ret =
+                            std::mem::replace(&mut chunk, Vec::with_capacity(self.chunk_size));
+
+                        handler.push(spawn_task_for_chunk(ret));
                     }
                 }
             }
-            // last chunk logic
+        }
+
+        // last chunk logic
+        if !chunk.is_empty() {
+            handler.push(spawn_task_for_chunk(chunk));
+        }
+
+        for handle in handler {
+            let _ = handle.await?;
         }
 
         Ok(())
     }
 }
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn spawn_task_for_chunk(
+    chunk: Vec<SendPtr>,
+) -> tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>> {
+    tokio::spawn(async { Ok(()) })
+}
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let file = File::open("/home/bedgirb/Downloads/test.docx")?;
     let mut docx_reader = DocXReader::from_reader(file)?;
-    docx_reader.start_walk()?;
+    docx_reader.start_walk().await?;
     /*
     let file = File::create("output.docx")?;
 
