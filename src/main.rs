@@ -1,171 +1,137 @@
-use docx_rs::{self, DocumentChild, Docx, ParagraphChild, RunChild};
-use std::{
-    fs::File,
-    io::{BufReader, Read},
-    sync::Arc,
-};
+use quick_xml::Reader;
+use quick_xml::Writer;
+use quick_xml::events::{BytesText, Event};
+use std::borrow::Cow;
+use std::fs::File;
+use std::io::{Cursor, Read, Write};
+use std::sync::Arc;
 use tokio::sync::Semaphore;
+use zip::write::SimpleFileOptions;
 
 use tmt::{send_translation_request, types::request::Language};
 
-const SEP: &str = " Aledrip ";
-
-struct SendPtr(*mut String);
-// SAFTEY: they are send seperately for each threads so its safe for this case
-unsafe impl Send for SendPtr {}
-
-struct DocXReader {
-    doc: Docx,
-    chunk_size: usize,
-    concurrent_request_size: usize,
+async fn process_document_xml(
+    xml_bytes: &[u8],
     src: Language,
     tgt: Language,
-}
-impl DocXReader {
-    pub fn from_reader<T: Read>(
-        reader: T,
-        src: Language,
-        tgt: Language,
-    ) -> Result<Self, Box<dyn std::error::Error>> {
-        let mut buffer = Vec::new();
-        let _ = BufReader::new(reader).read_to_end(&mut buffer);
-        let doc = docx_rs::read_docx(&buffer)?;
-        Ok(DocXReader {
-            doc,
-            chunk_size: 10,
-            concurrent_request_size: 5,
-            src,
-            tgt,
-        })
-    }
+) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    let mut reader = Reader::from_reader(xml_bytes);
+    let mut writer = Writer::new(Cursor::new(Vec::new()));
 
-    pub async fn start_walk(&mut self) -> Result<(), Box<dyn std::error::Error>> {
-        let mut chunk: Vec<SendPtr> = Vec::with_capacity(self.chunk_size);
-        // let mut con_request_handler: Vec<Vec<*mut String>> =
-        //    Vec::with_capacity(self.concurrent_request_size);
+    let mut w_t = false;
 
-        let mut handler = Vec::new();
+    // we store the index of the word for events
+    let mut events: Vec<Event<'static>> = Vec::new();
+    let mut text_indices: Vec<(usize, String)> = Vec::new();
 
-        let semaphore = Arc::new(Semaphore::new(self.concurrent_request_size));
-
-        for child in &mut self.doc.document.children {
-            let para = match child {
-                DocumentChild::Paragraph(p) => &mut **p,
-                _ => continue,
-            };
-            for pchild in &mut para.children {
-                let run = match pchild {
-                    ParagraphChild::Run(r) => &mut **r,
-                    _ => continue,
+    loop {
+        // we are only looking for w:t elements only
+        match reader.read_event() {
+            Ok(Event::Start(e)) if e.name().as_ref() == b"w:t" => {
+                w_t = true;
+                events.push(Event::Start(e.into_owned()));
+            }
+            Ok(Event::End(e)) if e.name().as_ref() == b"w:t" => {
+                w_t = false;
+                events.push(Event::End(e.into_owned()));
+            }
+            Ok(Event::Text(e)) if w_t => {
+                let raw_str = std::str::from_utf8(&e)?;
+                let text = match quick_xml::escape::unescape(raw_str) {
+                    Ok(Cow::Borrowed(s)) => s.to_string(),
+                    Ok(Cow::Owned(s)) => s,
+                    Err(_) => raw_str.to_string(),
                 };
-                for rchild in &mut run.children {
-                    let txt = match rchild {
-                        RunChild::Text(t) => t,
-                        _ => continue,
-                    };
-                    if txt.text.is_empty() {
-                        continue;
-                    }
-                    // we keep of adding until we hit the chunk size limit
-                    chunk.push(SendPtr(&mut txt.text as *mut String));
-
-                    // if we hit the limit
-                    // its the time to combine the chunks and make it as string with a sep, run a thread able to call tranlsation
-                    if chunk.len() >= self.chunk_size {
-                        // we reset the chunk for next iteration
-                        let ret =
-                            std::mem::replace(&mut chunk, Vec::with_capacity(self.chunk_size));
-
-                        handler.push(spawn_task_for_chunk(
-                            ret,
-                            semaphore.clone(),
-                            self.src,
-                            self.tgt,
-                        ));
-                    }
+                if !text.trim().is_empty() {
+                    text_indices.push((events.len(), text));
                 }
+                events.push(Event::Text(e.into_owned()));
+            }
+
+            Ok(Event::Eof) => break,
+
+            Err(e) => panic!("Error at position {}: {:?}", reader.error_position(), e),
+            Ok(e) => {
+                events.push(e.into_owned());
             }
         }
-
-        // last chunk logic
-        if !chunk.is_empty() {
-            handler.push(spawn_task_for_chunk(
-                chunk,
-                semaphore.clone(),
-                self.src,
-                self.tgt,
-            ));
-        }
-
-        for handle in handler {
-            handle
-                .await
-                .map_err(|e| e.to_string())?
-                .map_err(|e| e.to_string())?;
-        }
-
-        Ok(())
     }
-}
 
-fn build_payload(chunk: &[SendPtr]) -> String {
-    unsafe {
-        let texts: Vec<&str> = chunk.iter().map(|p| (*p.0).as_str()).collect();
-        texts.join(SEP)
-    }
-}
-fn parse_response(translated: &str) -> Vec<&str> {
-    // this is an api hack that  preserves Aledrip to एलेड्रिप in nepali, so spsplitting on that
-    translated.split("एलेड्रिप").map(|s| s.trim()).collect()
-}
+    let semaphore = Arc::new(Semaphore::new(50));
+    let mut handles = Vec::new();
 
-fn spawn_task_for_chunk(
-    chunk: Vec<SendPtr>,
-    sem: Arc<Semaphore>,
-    src: Language,
-    tgt: Language,
-) -> tokio::task::JoinHandle<Result<(), Box<dyn std::error::Error + Send + Sync>>> {
-    tokio::spawn(async move {
-        // only _ would drop but with names we can make it live till async block
-        let _check = sem.acquire().await?;
-        let payload = build_payload(&chunk);
-        let response = send_translation_request(&payload, src, tgt).await?;
-        let translated = &response.output;
+    for (idx, text) in text_indices {
+        let sem = semaphore.clone();
+        handles.push(tokio::spawn(async move {
+            let _sem = sem.acquire().await.unwrap();
 
-        let parts = parse_response(translated);
-
-        // write directly into doc memory
-        unsafe {
-            for (ptr, part) in chunk.iter().zip(parts.iter()) {
-                let s = &mut *ptr.0;
-                s.clear();
-                s.push_str(part);
+            let trimmed = text.trim();
+            if trimmed.is_empty() {
+                return (idx, text);
             }
-        }
 
-        Ok(())
-    })
+            let start_spaces = &text[..text.find(trimmed).unwrap_or(0)];
+            let end_spaces_idx = text.rfind(trimmed).unwrap_or(0) + trimmed.len();
+            let end_spaces = &text[end_spaces_idx..];
+
+            let response = match send_translation_request(trimmed, src, tgt).await {
+                Ok(resp) => format!("{}{}{}", start_spaces, resp.output, end_spaces),
+                Err(_) => text,
+            };
+            (idx, response)
+        }));
+    }
+
+    for handle in handles {
+        let (idx, translated_text) = handle.await?;
+        // writing translated text to events
+        events[idx] = Event::Text(BytesText::new(&translated_text).into_owned());
+    }
+
+    // writing serially stored events again to xml
+    for event in events {
+        writer.write_event(event)?;
+    }
+
+    Ok(writer.into_inner().into_inner())
 }
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let file = File::open("/home/bedgirb/Downloads/english.docx")?;
-    let mut docx_reader = DocXReader::from_reader(file, Language::English, Language::Nepali)?;
-    docx_reader.start_walk().await?;
-    let output = File::create("output.docx")?;
-    docx_reader.doc.build().pack(output)?;
+    let input_path = "/home/bedgirb/Downloads/swd.docx";
+    let output_path = "output.docx";
 
-    /*
-    let file = File::create("output.docx")?;
+    let file = File::open(input_path)?;
+    let mut archive = zip::ZipArchive::new(file)?;
 
-    let pdf_file = File::open("/home/bedgirb/Downloads/test.pdf")?;
-    let mut pdf_buffer = Vec::new();
-    let _ = BufReader::new(pdf_file).read_to_end(&mut pdf_buffer);
-    let mut pdf_doc = PdfDocument::from_bytes(pdf_buffer)?;
-    let extractor = pdf_doc.extract_words(0);
-    println!("{:?}", extractor);
-    doc.build().pack(file)?;
-    */
+    let output_file = File::create(output_path)?;
+    let mut zip_writer = zip::ZipWriter::new(output_file);
+
+    for i in 0..archive.len() {
+        let mut file = archive.by_index(i)?;
+        let options = SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated)
+            .unix_permissions(0o755);
+
+        if file.name() == "word/document.xml" {
+            let mut xml_bytes = Vec::new();
+            file.read_to_end(&mut xml_bytes)?;
+
+            let new_xml_bytes =
+                process_document_xml(&xml_bytes, Language::English, Language::Nepali).await?;
+
+            zip_writer.start_file("word/document.xml", options)?;
+            zip_writer.write_all(&new_xml_bytes)?;
+        } else {
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+
+            zip_writer.start_file(file.name(), options)?;
+            zip_writer.write_all(&buffer)?;
+        }
+    }
+
+    zip_writer.finish()?;
 
     Ok(())
 }

@@ -1,7 +1,4 @@
-pub mod error;
-pub mod parser;
 pub mod types;
-
 use std::{env, sync::LazyLock};
 
 use dotenvy::dotenv;
