@@ -1,25 +1,23 @@
 mod docx;
+mod handler;
 mod pdf;
 
-use tmt::types::request::Language;
+use axum::Router;
+use axum::routing::post;
+use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    docx::translate_docx(
-        "/home/bedgirb/Downloads/swd.docx",
-        "output.docx",
-        Language::English,
-        Language::Nepali,
-    )
-    .await?;
+async fn main() {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::from_default_env().add_directive("tmt=info".parse().unwrap()))
+        .with_target(false)
+        .compact()
+        .init();
 
-    pdf::translate_pdf(
-        "/home/bedgirb/Downloads/sample_test.pdf",
-        "output_from_pdf.docx",
-        Language::English,
-        Language::Nepali,
-    )
-    .await?;
+    let app = Router::new().route("/translate", post(handler::translate));
 
-    Ok(())
+    let addr = "0.0.0.0:1997";
+    tracing::info!(addr = %addr, "server starting");
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    axum::serve(listener, app).await.unwrap();
 }

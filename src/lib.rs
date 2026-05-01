@@ -1,12 +1,10 @@
 pub mod types;
-use std::{env, sync::LazyLock};
-
-use dotenvy::dotenv;
-use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
-
 use crate::types::request::{
     ApiError, Language, ResponseStatus, TranslationRequest, TranslationResponse,
 };
+use dotenvy::dotenv;
+use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
+use std::{env, sync::LazyLock};
 
 struct Config {
     token: String,
@@ -27,7 +25,6 @@ pub async fn send_translation_request(
     tgt: Language,
 ) -> Result<TranslationResponse, Box<dyn std::error::Error + Send + Sync>> {
     let client = reqwest::Client::new();
-
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
@@ -36,6 +33,7 @@ pub async fn send_translation_request(
     );
 
     let payload = TranslationRequest::new(text, src, tgt);
+    tracing::debug!(src = ?src, tgt = ?tgt, len = text.len(), "sending translation request");
 
     let response = client
         .post(&CONFIG.base_url)
@@ -45,21 +43,21 @@ pub async fn send_translation_request(
         .await?;
 
     let status = response.status();
-    let response_text = response.text().await?;
+    let body = response.text().await?;
 
     if status.is_success() {
-        let res_data: TranslationResponse = serde_json::from_str(&response_text)?;
-
-        if res_data.message_type == ResponseStatus::Success {
-            Ok(res_data)
+        let res: TranslationResponse = serde_json::from_str(&body)?;
+        if res.message_type == ResponseStatus::Success {
+            Ok(res)
         } else {
-            Err(res_data.message.into())
+            tracing::warn!(msg = %res.message, "translation api returned failure");
+            Err(res.message.into())
         }
     } else {
-        let err_data: ApiError = serde_json::from_str(&response_text).unwrap_or(ApiError {
+        let err: ApiError = serde_json::from_str(&body).unwrap_or(ApiError {
             message: "Unknown API error".to_string(),
         });
-
-        Err(err_data.message.into())
+        tracing::error!(status = %status, msg = %err.message, "translation api error");
+        Err(err.message.into())
     }
 }

@@ -11,5 +11,9 @@ serde_json = "1.0"
 dotenvy = "0.15.7" 
 zip = { version = "8.6.0", features = ["deflate"] }
 quick-xml = "0.39.2"
-pdf_oxide = "0.3"
-docx-rs = "0.4.20"
+scraper = "0.26.0"
+axum = { version = "0.8.9", features = ["multipart"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tempfile = "3"
+tower-http = { version = "0.5", features = ["cors"] }
