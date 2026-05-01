@@ -42,7 +42,7 @@ fn merge_broken_tokens(words: &mut Vec<pdf_oxide::layout::Word>) {
 fn extract_blocks(
     doc: &PdfDocument,
     line_gap: f32,
-) -> Result<Vec<TextBlock>, Box<dyn std::error::Error>> {
+) -> Result<Vec<TextBlock>, Box<dyn std::error::Error + Send + Sync>> {
     let page_count = doc.page_count()?;
     let mut blocks = Vec::new();
 
@@ -121,7 +121,8 @@ async fn translate_blocks(
     blocks: &[TextBlock],
     src: Language,
     tgt: Language,
-) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    progress: std::sync::Arc<std::sync::atomic::AtomicU8>,
+) -> Result<Vec<String>, Box<dyn std::error::Error + Send + Sync>> {
     use std::sync::Arc;
     use tokio::sync::Semaphore;
 
@@ -138,18 +139,20 @@ async fn translate_blocks(
             let _permit = sem.acquire().await.unwrap();
             let trimmed = text.trim();
             if trimmed.is_empty() {
-                return text.clone();
+                return Ok(text.clone());
             }
             match send_translation_request(trimmed, src, tgt).await {
-                Ok(resp) => resp.output,
-                Err(_) => text.clone(),
+                Ok(resp) => Ok(resp.output),
+                Err(e) => Err(e),
             }
         }));
     }
 
+    let total = handles.len().max(1);
     let mut results = Vec::with_capacity(handles.len());
-    for handle in handles {
-        results.push(handle.await?);
+    for (i, handle) in handles.into_iter().enumerate() {
+        results.push(handle.await??);
+        progress.store(((i + 1) * 95 / total) as u8, std::sync::atomic::Ordering::Relaxed);
     }
     Ok(results)
 }
@@ -159,14 +162,15 @@ pub async fn translate_pdf(
     output_docx: impl AsRef<Path>,
     src_lang: Language,
     tgt_lang: Language,
-) -> Result<(), Box<dyn std::error::Error>> {
+    progress: std::sync::Arc<std::sync::atomic::AtomicU8>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let input_path = &input_pdf;
     let output_path = &output_docx;
 
-    let doc = PdfDocument::open(input_path)?;
+    let doc = PdfDocument::open(input_path).map_err(|e| e.to_string())?;
     let blocks = extract_blocks(&doc, 4.0)?;
 
-    let translated = translate_blocks(&blocks, src_lang, tgt_lang).await?;
+    let translated = translate_blocks(&blocks, src_lang, tgt_lang, progress.clone()).await?;
 
     let body_size: f32 = {
         let mut sizes: Vec<f32> = blocks.iter().map(|b| b.font_size).collect();

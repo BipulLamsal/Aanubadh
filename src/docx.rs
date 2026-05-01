@@ -6,6 +6,7 @@ use std::fs::File;
 use std::io::Cursor;
 use std::io::{Read, Write};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU8, Ordering};
 use tmt::send_translation_request;
 use tokio::sync::Semaphore;
 use zip::write::SimpleFileOptions;
@@ -18,7 +19,8 @@ pub async fn process_document_xml(
     xml_bytes: &[u8],
     src: Language,
     tgt: Language,
-) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+    progress: Arc<AtomicU8>,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
     let mut reader = Reader::from_reader(xml_bytes);
     let mut writer = Writer::new(Cursor::new(Vec::new()));
 
@@ -71,7 +73,7 @@ pub async fn process_document_xml(
 
             let trimmed = text.trim();
             if trimmed.is_empty() {
-                return (idx, text);
+                return Ok((idx, text));
             }
 
             let start_spaces = &text[..text.find(trimmed).unwrap_or(0)];
@@ -80,16 +82,17 @@ pub async fn process_document_xml(
 
             let response = match send_translation_request(trimmed, src, tgt).await {
                 Ok(resp) => format!("{}{}{}", start_spaces, resp.output, end_spaces),
-                Err(_) => text,
+                Err(e) => return Err(e),
             };
-            (idx, response)
+            Ok((idx, response))
         }));
     }
 
-    for handle in handles {
-        let (idx, translated_text) = handle.await?;
-        // writing translated text to events
+    let total = handles.len().max(1);
+    for (i, handle) in handles.into_iter().enumerate() {
+        let (idx, translated_text) = handle.await??;
         events[idx] = Event::Text(BytesText::new(&translated_text).into_owned());
+        progress.store(((i + 1) * 95 / total) as u8, Ordering::Relaxed);
     }
 
     // writing serially stored events again to xml
@@ -105,7 +108,8 @@ pub async fn translate_docx(
     output_path: &str,
     src: Language,
     tgt: Language,
-) -> Result<(), Box<dyn std::error::Error>> {
+    progress: Arc<AtomicU8>,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let file = File::open(input_path)?;
     let mut archive = zip::ZipArchive::new(file)?;
 
@@ -122,7 +126,7 @@ pub async fn translate_docx(
             let mut xml_bytes = Vec::new();
             file.read_to_end(&mut xml_bytes)?;
 
-            let new_xml_bytes = process_document_xml(&xml_bytes, src, tgt).await?;
+            let new_xml_bytes = process_document_xml(&xml_bytes, src, tgt, progress.clone()).await?;
 
             zip_writer.start_file("word/document.xml", options)?;
             zip_writer.write_all(&new_xml_bytes)?;

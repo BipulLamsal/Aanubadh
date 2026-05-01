@@ -13,3 +13,7 @@ zip = { version = "8.6.0", features = ["deflate"] }
 quick-xml = "0.39.2"
 pdf_oxide = "0.3"
 docx-rs = "0.4.20"
+csv = "1"
+axum = { version = "0.8", features = ["multipart"] }
+tower-http = { version = "0.6", features = ["cors", "fs"] }
+uuid = { version = "1", features = ["v4"] }

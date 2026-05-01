@@ -1,0 +1,353 @@
+:root {
+    --bg: #f6f9ff;
+    --surface: #ffffff;
+    --surface-soft: #f1f6ff;
+    --border: #d7e0ef;
+    --text: #102036;
+    --muted: #506078;
+    --primary: #0f4c81;
+    --primary-strong: #00355f;
+    --success: #1f8b4c;
+    --radius: 14px;
+}
+
+* {
+    box-sizing: border-box;
+}
+
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: Inter, system-ui, -apple-system, sans-serif;
+    color: var(--text);
+    background: radial-gradient(circle at 20% -10%, #dce9ff 0, transparent 45%), var(--bg);
+    position: relative;
+}
+
+.shell {
+    width: min(800px, calc(100% - 48px));
+    margin: 0 auto;
+}
+
+.topbar {
+    padding: 14px 18px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.8);
+    backdrop-filter: blur(10px);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 100;
+}
+
+.brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.brand-title {
+    margin: 0;
+    font-family: "Plus Jakarta Sans", Inter, sans-serif;
+    font-weight: 700;
+    font-size: 1.2em;
+}
+
+.chip {
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.chip-soft {
+    background: #e8f0ff;
+    color: var(--primary-strong);
+    border: 1px solid #c8dafd;
+}
+
+.hero {
+    margin: 100px 0 28px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.eyebrow {
+    color: var(--primary);
+    font-size: 12px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 10px;
+    font-weight: 700;
+    font-family: "Plus Jakarta Sans", sans-serif;
+}
+
+.hero h1 {
+    font-family: "Plus Jakarta Sans", Inter, sans-serif;
+    margin: 0;
+    font-size: clamp(32px, 5vw, 48px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    text-align: center;
+}
+
+.hero-copy {
+    margin: 14px 0 0;
+    color: var(--muted);
+    max-width: 670px;
+    font-size: 17px;
+    line-height: 1.7;
+    text-align: center;
+}
+
+.panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 22px;
+    box-shadow: 0 8px 24px rgba(16, 32, 54, 0.05);
+    width: 100%;
+}
+
+.grid-head {
+    display: grid;
+    grid-template-columns: 1fr 56px 1fr;
+    gap: 14px;
+    align-items: end;
+}
+
+label {
+    display: block;
+    margin-bottom: 8px;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    font-weight: 700;
+    color: var(--muted);
+}
+
+.field {
+    width: 100%;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    border-radius: 10px;
+    padding: 12px;
+    color: var(--text);
+    font-size: 15px;
+}
+
+.field:focus {
+    outline: 2px solid color-mix(in srgb, var(--primary) 24%, transparent);
+    border-color: var(--primary);
+}
+
+.icon-btn {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--surface-soft);
+    height: 44px;
+    font-size: 24px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: "Plus Jakarta Sans", Inter, sans-serif;
+    font-weight: 700;
+}
+
+.dropzone {
+    margin-top: 20px;
+    border: 2px dashed #b7c8e2;
+    border-radius: 12px;
+    background: linear-gradient(180deg, #fbfdff 0%, #f4f8ff 100%);
+    padding: 60px 10px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 180ms ease, background 180ms ease, transform 120ms ease;
+    user-select: none;
+    position: relative;
+}
+
+.dropzone:hover,
+.dropzone.dragging {
+    border-color: var(--primary);
+    background: #eef5ff;
+}
+
+.dropzone:active {
+    transform: scale(0.98);
+}
+
+.drop-title {
+    margin: 0;
+    font-size: 24px;
+    font-family: "Plus Jakarta Sans", Inter, sans-serif;
+    font-weight: 700;
+}
+
+.drop-sub {
+    margin: 8px 0 0;
+    color: var(--muted);
+}
+
+.format-tags {
+    margin-top: 14px;
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+}
+
+.format-tags span {
+    border: 1px solid var(--border);
+    padding: 4px 8px;
+    border-radius: 8px;
+    font-size: 11px;
+    color: var(--muted);
+    background: #fff;
+}
+
+.file-card {
+    margin-top: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border: 1px solid #c8dafd;
+    background: #eef4ff;
+    border-radius: 10px;
+}
+
+.file-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.file-icon {
+    color: var(--primary);
+    font-size: 28px;
+}
+
+.file-details {
+    display: flex;
+    flex-direction: column;
+}
+
+.file-name {
+    font-weight: 600;
+    color: var(--primary-strong);
+    font-size: 14px;
+}
+
+.file-size {
+    color: var(--muted);
+    font-size: 12px;
+}
+
+.remove-btn {
+    height: 32px;
+    width: 32px;
+    border-radius: 8px;
+    background: transparent;
+    border: none;
+    color: var(--muted);
+    cursor: pointer;
+}
+
+.remove-btn:hover {
+    background: #dce9ff;
+    color: var(--primary-strong);
+}
+
+.progress-section {
+    margin-top: 20px;
+}
+
+.progress-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--primary-strong);
+}
+
+.progress-bar {
+    height: 10px;
+    background: var(--surface-soft);
+    border-radius: 5px;
+    overflow: hidden;
+    border: 1px solid var(--border);
+}
+
+.progress-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--primary), #3b82f6);
+    border-radius: 5px;
+    transition: width 0.3s ease;
+}
+
+.status {
+    margin-top: 12px;
+    text-align: center;
+    font-size: 14px;
+    min-height: 20px;
+}
+
+.cta {
+    margin-top: 16px;
+    width: 100%;
+    border: 0;
+    border-radius: 10px;
+    padding: 13px 18px;
+    color: #fff;
+    background: var(--primary);
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 0.02em;
+    cursor: pointer;
+    font-family: "Plus Jakarta Sans", Inter, sans-serif;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    transition: background 0.2s ease;
+}
+
+.cta:hover {
+    background: var(--primary-strong);
+}
+
+.cta:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.download-btn {
+    background: var(--success);
+    text-decoration: none;
+}
+
+.download-btn:hover {
+    background: #145a32;
+}
+
+.hidden {
+    display: none !important;
+}
+
+@media (max-width: 600px) {
+    .grid-head {
+        grid-template-columns: 1fr;
+    }
+
+    .icon-btn {
+        width: 100%;
+    }
+}
