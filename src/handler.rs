@@ -2,26 +2,12 @@ use axum::body::Body;
 use axum::extract::Multipart;
 use axum::http::{HeaderValue, StatusCode, header};
 use axum::response::Response;
-use std::path::PathBuf;
+
 use tmt::types::request::Language;
 
 use crate::docx;
 use crate::pdf;
-
-fn parse_language(s: &str) -> Result<Language, Response> {
-    match s {
-        "en" => Ok(Language::English),
-        "ne" => Ok(Language::Nepali),
-        "tmg" => Ok(Language::Tamang),
-        _ => {
-            tracing::warn!(lang = %s, "unknown language code");
-            Err(error_response(
-                StatusCode::BAD_REQUEST,
-                &format!("unknown language: {}", s),
-            ))
-        }
-    }
-}
+use crate::csv;
 
 pub async fn translate(mut multipart: Multipart) -> Response {
     let mut file_data: Option<Vec<u8>> = None;
@@ -72,16 +58,17 @@ pub async fn translate(mut multipart: Multipart) -> Response {
         None => return error_response(StatusCode::BAD_REQUEST, "missing file name"),
     };
     let src = match src_str.as_deref() {
-        Some(s) => match parse_language(s) {
+        Some(s) => match s.parse::<Language>() {
             Ok(l) => l,
-            Err(r) => return r,
+            Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
         },
         None => return error_response(StatusCode::BAD_REQUEST, "missing src field"),
     };
+
     let tgt = match tgt_str.as_deref() {
-        Some(s) => match parse_language(s) {
+        Some(s) => match s.parse::<Language>() {
             Ok(l) => l,
-            Err(r) => return r,
+            Err(e) => return error_response(StatusCode::BAD_REQUEST, &e),
         },
         None => return error_response(StatusCode::BAD_REQUEST, "missing tgt field"),
     };
@@ -89,28 +76,10 @@ pub async fn translate(mut multipart: Multipart) -> Response {
     let extension = file_name.rsplit('.').next().unwrap_or("").to_lowercase();
     tracing::info!(file = %file_name, ext = %extension, "received translation request");
 
-    let tmp_dir = match tempfile::tempdir() {
-        Ok(d) => d,
-        Err(e) => {
-            tracing::error!(err = %e, "failed to create temp dir");
-            return error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string());
-        }
-    };
-    let input_path = tmp_dir.path().join(&file_name);
-    if let Err(e) = std::fs::write(&input_path, &file_data) {
-        tracing::error!(err = %e, "failed to write uploaded file");
-        return error_response(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string());
-    }
-
     let result = match extension.as_str() {
-        "docx" => {
-            let output_path = tmp_dir.path().join("translated.docx");
-            handle_docx(input_path, output_path, src, tgt, file_name).await
-        }
-        "pdf" => {
-            let output_path = tmp_dir.path().join("translated.html");
-            handle_pdf(input_path, output_path, src, tgt, file_name).await
-        }
+        "docx" => handle_docx(&file_data, src, tgt, file_name).await,
+        "pdf" => handle_pdf(&file_data, src, tgt, file_name).await,
+        "csv" => handle_csv(&file_data, src, tgt, file_name).await,
         _ => {
             tracing::warn!(ext = %extension, "unsupported file type");
             return error_response(
@@ -127,12 +96,23 @@ pub async fn translate(mut multipart: Multipart) -> Response {
 }
 
 async fn handle_docx(
-    input_path: PathBuf,
-    output_path: PathBuf,
+    file_data: &[u8],
     src: Language,
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
+    let tmp_dir = tempfile::tempdir().map_err(|e| {
+        tracing::error!(err = %e, "failed to create temp dir");
+        e.to_string()
+    })?;
+    let input_path = tmp_dir.path().join("in.docx");
+    let output_path = tmp_dir.path().join("out.docx");
+
+    std::fs::write(&input_path, file_data).map_err(|e| {
+        tracing::error!(err = %e, "failed to write docx file");
+        e.to_string()
+    })?;
+
     docx::translate_docx(
         input_path.to_str().unwrap(),
         output_path.to_str().unwrap(),
@@ -159,12 +139,23 @@ async fn handle_docx(
 }
 
 async fn handle_pdf(
-    input_path: PathBuf,
-    output_path: PathBuf,
+    file_data: &[u8],
     src: Language,
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
+    let tmp_dir = tempfile::tempdir().map_err(|e| {
+        tracing::error!(err = %e, "failed to create temp dir");
+        e.to_string()
+    })?;
+    let input_path = tmp_dir.path().join("in.pdf");
+    let output_path = tmp_dir.path().join("out.html");
+
+    std::fs::write(&input_path, file_data).map_err(|e| {
+        tracing::error!(err = %e, "failed to write pdf file");
+        e.to_string()
+    })?;
+
     pdf::translate_pdf(&input_path, &output_path, src, tgt)
         .await
         .map_err(|e| {
@@ -182,6 +173,28 @@ async fn handle_pdf(
         bytes,
         &original_name.replace(".pdf", ".html"),
         "text/html; charset=utf-8",
+    ))
+}
+
+async fn handle_csv(
+    file_data: &[u8],
+    src: Language,
+    tgt: Language,
+    original_name: String,
+) -> Result<Response, String> {
+    let output_data = csv::translate_csv(file_data, src, tgt)
+        .await
+        .map_err(|e| {
+            tracing::error!(err = %e, "csv translation failed");
+            e.to_string()
+        })?;
+
+    tracing::info!(file = %original_name, "csv translation complete");
+
+    Ok(file_response(
+        output_data,
+        &original_name.replace(".csv", "_translated.csv"),
+        "text/csv; charset=utf-8",
     ))
 }
 

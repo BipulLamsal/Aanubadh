@@ -1,3 +1,5 @@
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
@@ -9,6 +11,18 @@ pub enum Language {
     Nepali,
     #[serde(rename = "tmg")]
     Tamang,
+}
+
+impl FromStr for Language {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "en" => Ok(Language::English),
+            "ne" => Ok(Language::Nepali),
+            "tmg" => Ok(Language::Tamang),
+            _ => Err(format!("unknown language: {}", s)),
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
