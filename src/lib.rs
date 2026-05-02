@@ -1,10 +1,10 @@
 pub mod types;
-use crate::types::request::{
-    ApiError, Language, ResponseStatus, TranslationRequest, TranslationResponse,
-};
+use crate::types::request::{Language, ResponseStatus, TranslationRequest, TranslationResponse};
 use dotenvy::dotenv;
+use futures::stream::{self, StreamExt};
 use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderMap, HeaderValue};
 use std::{env, sync::LazyLock};
+use unicode_segmentation::UnicodeSegmentation;
 
 struct Config {
     token: String,
@@ -21,11 +21,128 @@ static CONFIG: LazyLock<Config> = LazyLock::new(|| {
     }
 });
 
-pub async fn send_translation_request(
+fn is_abbreviation(s: &str) -> bool {
+    let s = s.trim_end();
+    if !s.ends_with('.') {
+        return false;
+    }
+
+    let last_word = s.split_whitespace().last().unwrap_or("");
+    let lower = last_word.to_lowercase();
+
+    let abbreviations = [
+        "mr.", "mrs.", "ms.", "dr.", "prof.", "sr.", "jr.", "inc.", "ltd.", "co.", "corp.", "vs.",
+        "v.", "etc.", "e.g.", "i.e.", "al.", "st.", "rd.", "ave.", "blvd.", "jan.", "feb.", "mar.",
+        "apr.", "aug.", "sept.", "oct.", "nov.", "dec.", "rs.", "no.",
+    ];
+
+    if abbreviations.contains(&lower.as_str()) {
+        return true;
+    }
+
+    if last_word.len() == 2 && last_word.ends_with('.') {
+        if let Some(c) = last_word.chars().next() {
+            if c.is_alphabetic() {
+                return true;
+            }
+        }
+    }
+
+    false
+}
+
+pub fn split_sentences(text: &str) -> Vec<String> {
+    let raw_sentences: Vec<&str> = text.unicode_sentences().collect();
+    let mut merged = Vec::new();
+    let mut current = String::new();
+
+    for s in raw_sentences {
+        current.push_str(s);
+
+        let is_abbr = is_abbreviation(&current);
+
+        let trimmed_no_nl = current.trim_end();
+        let lacks_punct = if current.ends_with('\n')
+            && !current.ends_with("\n\n")
+            && !current.ends_with("\r\n\r\n")
+        {
+            if let Some(c) = trimmed_no_nl.chars().last() {
+                !matches!(c, '.' | '?' | '!' | ':' | ';' | '।')
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+
+        if !is_abbr && !lacks_punct {
+            merged.push(current.clone());
+            current.clear();
+        }
+    }
+
+    if !current.is_empty() {
+        merged.push(current);
+    }
+
+    merged
+}
+
+fn fix_punctuation(original: &str, translated: &str, target: &Language) -> String {
+    let mut out = translated.trim().to_string();
+    if out.is_empty() {
+        return out;
+    }
+
+    let orig_trimmed = original.trim();
+    if !orig_trimmed.contains(' ') && orig_trimmed.len() > 1 {
+        let words: Vec<&str> = out.split_whitespace().collect();
+        if words.len() == 2 && words[0] == words[1] {
+            out = words[0].to_string();
+        }
+    }
+
+    let is_nepali_or_tamang = matches!(target, Language::Nepali | Language::Tamang);
+
+    if is_nepali_or_tamang {
+        if original.trim_end().ends_with('.') {
+            if out.ends_with('.') {
+                out.pop();
+                out.push('।');
+            } else if !out.ends_with('।') && !out.ends_with('?') && !out.ends_with('!') {
+                out.push('।');
+            }
+        } else if original.trim_end().ends_with('?') && !out.ends_with('?') {
+            out.push('?');
+        } else if original.trim_end().ends_with('!') && !out.ends_with('!') {
+            out.push('!');
+        }
+    } else {
+        if original.trim_end().ends_with('.')
+            && !out.ends_with('.')
+            && !out.ends_with('?')
+            && !out.ends_with('!')
+        {
+            out.push('.');
+        } else if original.trim_end().ends_with('?') && !out.ends_with('?') {
+            out.push('?');
+        } else if original.trim_end().ends_with('!') && !out.ends_with('!') {
+            out.push('!');
+        }
+    }
+
+    out
+}
+
+pub async fn translate_sentence(
     text: &str,
     src: Language,
     tgt: Language,
-) -> Result<TranslationResponse, Box<dyn std::error::Error + Send + Sync>> {
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    if text.trim().is_empty() {
+        return Ok(String::new());
+    }
+
     let mut headers = HeaderMap::new();
     headers.insert(CONTENT_TYPE, HeaderValue::from_static("application/json"));
     headers.insert(
@@ -33,15 +150,12 @@ pub async fn send_translation_request(
         HeaderValue::from_str(&format!("Bearer {}", &CONFIG.token))?,
     );
 
-    let payload = TranslationRequest::new(text, src, tgt);
-    tracing::debug!(src = ?src, tgt = ?tgt, len = text.len(), "sending translation request");
+    let payload = TranslationRequest::new(text, src.clone(), tgt.clone());
 
-    let max_retries = 5;
-    let mut attempt = 0;
+    let mut attempts = 0;
+    let max_attempts = 10;
 
     loop {
-        attempt += 1;
-
         let response = CONFIG
             .client
             .post(&CONFIG.base_url)
@@ -50,46 +164,67 @@ pub async fn send_translation_request(
             .send()
             .await?;
 
-        let status = response.status();
+        let status_code = response.status();
 
-        if status == reqwest::StatusCode::TOO_MANY_REQUESTS {
-            if attempt > max_retries {
-                tracing::error!("max retries exceeded for rate limit");
-                return Err("Rate limit exceeded".into());
+        if status_code.as_u16() == 429 {
+            attempts += 1;
+            if attempts >= max_attempts {
+                return Ok(text.to_string());
             }
-
-            let retry_after = response
-                .headers()
-                .get(reqwest::header::RETRY_AFTER)
-                .and_then(|h| h.to_str().ok())
-                .and_then(|s| s.parse::<u64>().ok())
-                .unwrap_or_else(|| 2u64.pow(attempt as u32)); // 2, 4, 8, 16, 32
-
-            tracing::warn!(
-                attempt = attempt,
-                retry_after_secs = retry_after,
-                "rate limit hit, sleeping before retry"
-            );
-            tokio::time::sleep(tokio::time::Duration::from_secs(retry_after)).await;
+            let wait_secs = 2u64.pow(attempts);
+            tokio::time::sleep(tokio::time::Duration::from_secs(wait_secs)).await;
             continue;
         }
 
-        let body = response.text().await?;
+        if !status_code.is_success() {
+            return Ok(text.to_string());
+        }
 
-        if status.is_success() {
-            let res: TranslationResponse = serde_json::from_str(&body)?;
-            if res.message_type == ResponseStatus::Success {
-                return Ok(res);
-            } else {
-                tracing::warn!(msg = %res.message, "translation api returned failure");
-                return Err(res.message.into());
-            }
+        let body = response.text().await?;
+        let res: TranslationResponse = serde_json::from_str(&body)?;
+
+        if res.message_type == ResponseStatus::Success {
+            let raw_output = res.output;
+            return Ok(fix_punctuation(text, &raw_output, &tgt));
         } else {
-            let err: ApiError = serde_json::from_str(&body).unwrap_or(ApiError {
-                message: "Unknown API error".to_string(),
-            });
-            tracing::error!(status = %status, msg = %err.message, "translation api error");
-            return Err(err.message.into());
+            return Ok(text.to_string());
         }
     }
+}
+
+pub async fn translate_text_parallel(
+    text: &str,
+    source: Language,
+    target: Language,
+) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+    if text.trim().is_empty() {
+        return Ok(text.to_string());
+    }
+
+    let sentences = split_sentences(text);
+
+    let translated_sentences = stream::iter(sentences)
+        .map(|sentence| {
+            let source = source.clone();
+            let target = target.clone();
+
+            async move {
+                let trimmed = sentence.trim_end();
+                if trimmed.is_empty() {
+                    return sentence;
+                }
+
+                let trailing_ws = &sentence[trimmed.len()..];
+
+                match translate_sentence(trimmed, source, target).await {
+                    Ok(translated) => format!("{}{}", translated, trailing_ws),
+                    Err(_) => sentence,
+                }
+            }
+        })
+        .buffer_unordered(50)
+        .collect::<Vec<String>>()
+        .await;
+
+    Ok(translated_sentences.join(""))
 }

@@ -81,7 +81,6 @@ pub async fn translate(mut multipart: Multipart) -> Response {
         "pdf" => handle_pdf(&file_data, src, tgt, file_name).await,
         "csv" => handle_csv(&file_data, src, tgt, file_name).await,
         _ => {
-            tracing::warn!(ext = %extension, "unsupported file type");
             return error_response(
                 StatusCode::BAD_REQUEST,
                 &format!("unsupported file type: {}", extension),
@@ -101,38 +100,13 @@ async fn handle_docx(
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
-    let tmp_dir = tempfile::tempdir().map_err(|e| {
-        tracing::error!(err = %e, "failed to create temp dir");
-        e.to_string()
-    })?;
-    let input_path = tmp_dir.path().join("in.docx");
-    let output_path = tmp_dir.path().join("out.docx");
-
-    std::fs::write(&input_path, file_data).map_err(|e| {
-        tracing::error!(err = %e, "failed to write docx file");
-        e.to_string()
-    })?;
-
-    docx::translate_docx(
-        input_path.to_str().unwrap(),
-        output_path.to_str().unwrap(),
-        src,
-        tgt,
-    )
-    .await
-    .map_err(|e| {
-        tracing::error!(err = %e, "docx translation failed");
-        e.to_string()
-    })?;
-
-    tracing::info!(file = %original_name, "docx translation complete");
-    let bytes = std::fs::read(&output_path).map_err(|e| {
-        tracing::error!(err = %e, "failed to read translated docx");
-        e.to_string()
-    })?;
+    // processing document
+    let output_data = docx::process_docx_translation(file_data, src, tgt)
+        .await
+        .map_err(|e| e.to_string())?;
 
     Ok(file_response(
-        bytes,
+        output_data,
         &format!("translated_{}", original_name),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ))
@@ -144,35 +118,23 @@ async fn handle_pdf(
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
-    let tmp_dir = tempfile::tempdir().map_err(|e| {
-        tracing::error!(err = %e, "failed to create temp dir");
-        e.to_string()
-    })?;
+    // temporary directory to hold files
+    let tmp_dir = tempfile::tempdir().map_err(|e| e.to_string())?;
     let input_path = tmp_dir.path().join("in.pdf");
-    let output_path = tmp_dir.path().join("out.html");
+    let output_path = tmp_dir.path().join("out.pdf");
 
-    std::fs::write(&input_path, file_data).map_err(|e| {
-        tracing::error!(err = %e, "failed to write pdf file");
-        e.to_string()
-    })?;
+    std::fs::write(&input_path, file_data).map_err(|e| e.to_string())?;
 
     pdf::translate_pdf(&input_path, &output_path, src, tgt)
         .await
-        .map_err(|e| {
-            tracing::error!(err = %e, "pdf translation failed");
-            e.to_string()
-        })?;
+        .map_err(|e| e.to_string())?;
 
-    tracing::info!(file = %original_name, "pdf translation complete");
-    let bytes = std::fs::read(&output_path).map_err(|e| {
-        tracing::error!(err = %e, "failed to read translated html");
-        e.to_string()
-    })?;
+    let bytes = std::fs::read(&output_path).map_err(|e| e.to_string())?;
 
     Ok(file_response(
         bytes,
-        &original_name.replace(".pdf", ".html"),
-        "text/html; charset=utf-8",
+        &original_name.replace(".pdf", "_translated.pdf"),
+        "application/pdf",
     ))
 }
 
@@ -182,14 +144,10 @@ async fn handle_csv(
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
+    // csv file processing
     let output_data = csv::translate_csv(file_data, src, tgt)
         .await
-        .map_err(|e| {
-            tracing::error!(err = %e, "csv translation failed");
-            e.to_string()
-        })?;
-
-    tracing::info!(file = %original_name, "csv translation complete");
+        .map_err(|e| e.to_string())?;
 
     Ok(file_response(
         output_data,
