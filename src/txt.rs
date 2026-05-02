@@ -38,7 +38,6 @@ pub async fn translate_txt(
         // Translate the line
         match translate_text_parallel(trimmed, source.clone(), target.clone()).await {
             Ok(translated) => {
-                tracing::debug!("Translated line: {} -> {}", trimmed, translated);
                 translated_lines.push(translated);
             }
             Err(e) => {
