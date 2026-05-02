@@ -1,43 +1,76 @@
-## Development on progress
-This is a translation tool developed for KU research lab for tmt project. I found there is significant gap in the pdf extractor tool that preserves layout maybe we can forward this idea and furhter work on it helping the os community and improve research activity.  
+# Aanubadh
 
+translation tool built for KU Information and Language Processing Research Lab, tmt project. supports english, nepali and tamang across pdf, docx and csv.
 
-## API usage
--  URL: https://needed-narwhal-charmed.ngrok-free.app/translate
-- Method: POST
-- Content-Type: multipart/form-data
-- Parameters:
-    - file: pdf
-    - src: language code
-    - tgt: language code
+the project is still in active development. found a significant gap in layout-preserving pdf extraction; planning to push this further for the open source community and low-resource language research.
 
-```
+---
+
+## api
+
+url: http://127.0.0.1:1997/translate  
+method: POST  
+content-type: multipart/form-data  
+params: file (pdf/docx/csv), src (en/ne/tam), tgt (en/ne/tam)
+
+```bash
 curl -X POST http://127.0.0.1:1997/translate \
-  -F "file=document.pdf" \
+  -F "file=@document.pdf" \
   -F "src=en" \
   -F "tgt=ne" \
   --output "translated_document.pdf"
-
 ```
 
-## Where our previous idea failed
-    - At first we started with doc-rs and picking mut ref to runnable elements inside the paragraph and translating one to one and mutating the orignal value to translated one. It was working for simpler document but turns out aspects like (images inside tabel) unimplemeneted from the crate itself.  
-    - we quickly moved to working with w-t (parsing xml direclty with quick-xml) grabing only the text and storing it on the vec and reconstrcting with same element we received form the parser. (quick and easy solution)
-    - to limit the async task we have used sempaphore right now its 50, but I was planning it to store in state where user can set their need as they need 
-    - another trick which we tried to implement failed is batching, well translation was smart enoguht to remove any type of unicodes and symbols. Even then we tried to use special token : `Aldrep` maping with nepali and tamang result but this failed because it ruins the context of the setence and puts comma everytime there is fullstops in the sentence.
-    - Another trick was wasm but this was not possible because we were calling api inside so we switched to good old day tcp.
-    - PDF is another problem but we are using very maintained library/tooling : pdf2htmlEX, converting pdf to a very high quality html and you know borwser lets you open html as pdf so why worry let browser worry.   
-    - PDF was the toughest part of the whole project
+the response streams the translated file directly back. no job ids, no polling, just the file.
+
+---
+
+## what we tried and where it failed
+
+we started by grabbing mut refs to runnable elements inside paragraphs and translating one to one. worked for simple docs but hit a wall with images inside tables, turns out docx-rs just hasnt implemented that yet.
+
+after that we used quick-xml for direct parsing, grabbing only w:t nodes, storing in a vec and reconstructing with the same elements. quick and easy.
+
+we also tried mapping a special token `Aldrep` to batch sentences. the api stripped any unicode/symbols, and even when tokens got through it broke sentence context and added commas at every full stop. abandoned.
+
+wasm was considered briefly, not viable because we make outbound api calls. switched back to plain tcp.
+
+pdf2htmlEX converts pdf to high quality html which we can open as pdf in browser. worked, but eventually ditched it, because it used css positional styling to map the layout, which was way harder to parse. even after parsing we had to go word by word making it unreliable.
+
+---
+
+## how it works
+
+no ocr involved. works directly on document structure so the source pdf needs to be text-based, not a scanned image.
+
+the server is axum on port 1997. one route: POST /translate. reads the multipart fields, detects the file extension, routes to the right handler, and streams the result back as an attachment.
+
+for docx, the file is a zip of xml files. we unzip it in memory, find word/document.xml and any headers or footers, walk through every w:t node, decode the xml entities, translate the text, re-encode, and repack the zip. fonts get slightly reduced (multiplied by 0.82) for nepali and tamang targets because translated text tends to be longer and overflow.
+
+for pdf, there is no way to edit a pdf directly so it goes through a three step pipeline. pdf2docx converts the pdf to a docx preserving the layout. the docx goes through the same xml engine as above but sentence by sentence instead of parallel (from_pdf flag). then docx2pdf renders it back. both python steps run as subprocesses.
+
+for csv, we read every cell, skip anything that has no alphabetic characters, skip urls and emails, and translate the rest. headers are not treated specially since has_headers is set to false — every row goes through the same check.
+
+translation calls go to the tmt api with a bearer token from API_TOKEN in the env. there is a global semaphore allowing 50 concurrent requests and a 1.5s delay between them. on a 429 it backs off exponentially and retries up to 10 times, then falls back to the original text. sentences are split with unicode-segmentation before translation so mr. dr. prof. and similar abbreviations don't get broken into separate calls. punctuation is fixed after translation  periods become । for nepali and tamang targets, and ? or ! get appended if the original had them.
 
 
-## Current Architecture & Features
+![Architecture Diagram](./diagrams/architecture.png)
 
-    So after all those failed attempts and quick hacks, here is what actually stuck and is running right now.
 
-    - the translation API has a 60 req/min cap so we have a global semaphore with a 1.5 second delay between requests. If we still get a 429 it does exponential backoff and retries up to 10 times. For large text blocks we also split into sentences first using unicode-segmentation, smart enough to not break on things like Mr. or Dr.
+---
 
-    - The toughest part of the whole project. Ditched pdf2htmlEX in the end and landed on a three step pipeline: pdf2docx converts to DOCX preserving layout, that goes through our xml engine, then docx2pdf renders it back. Holds up much better than anything else we tried.
-    
-    - For csvs it skips cells that are pure numbers, emails or URLs and only translates actual text. Reader and Writer stay in-memory.
-    
-    - Axum, handles multipart uploads and streams the translated file straight back to the client. Light and gets the job done.
+## setup
+
+needs rust, python, with pip, and an API_TOKEN from [ilprl ku](https://tmt.ilprl.ku.edu.np)
+
+```bash
+git clone github.com/BipulLamsal/Aanubadh 
+cd Aanubadh
+echo "API_TOKEN=your_token_here" > .env
+pip install pdf2docx docx2pdf
+cargo build --release
+cargo run --release
+```
+
+open http://localhost:1997
+
