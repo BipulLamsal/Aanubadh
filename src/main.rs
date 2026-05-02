@@ -2,6 +2,7 @@ mod docx;
 mod handler;
 mod pdf;
 mod csv;
+mod txt;
 
 use axum::Router;
 use axum::routing::post;

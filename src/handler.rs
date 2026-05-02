@@ -8,6 +8,7 @@ use tmt::types::request::Language;
 use crate::docx;
 use crate::pdf;
 use crate::csv;
+use crate::txt;
 
 pub async fn translate(mut multipart: Multipart) -> Response {
     let mut file_data: Option<Vec<u8>> = None;
@@ -80,6 +81,7 @@ pub async fn translate(mut multipart: Multipart) -> Response {
         "docx" => handle_docx(&file_data, src, tgt, file_name).await,
         "pdf" => handle_pdf(&file_data, src, tgt, file_name).await,
         "csv" => handle_csv(&file_data, src, tgt, file_name).await,
+        "txt" => handle_txt(&file_data, src, tgt, file_name).await,
         _ => {
             return error_response(
                 StatusCode::BAD_REQUEST,
@@ -153,6 +155,24 @@ async fn handle_csv(
         output_data,
         &original_name.replace(".csv", "_translated.csv"),
         "text/csv; charset=utf-8",
+    ))
+}
+
+async fn handle_txt(
+    file_data: &[u8],
+    src: Language,
+    tgt: Language,
+    original_name: String,
+) -> Result<Response, String> {
+    // txt file processing
+    let output_data = txt::translate_txt(file_data, src, tgt)
+        .await
+        .map_err(|e| e.to_string())?;
+
+    Ok(file_response(
+        output_data,
+        &original_name.replace(".txt", "_translated.txt"),
+        "text/plain; charset=utf-8",
     ))
 }
 

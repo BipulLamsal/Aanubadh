@@ -168,7 +168,17 @@ pub async fn translate_sentence(
 
         if status_code.as_u16() == 429 {
             attempts += 1;
+            tracing::warn!(
+                "Rate limited (attempt {}/{}), waiting {} seconds before retry",
+                attempts,
+                max_attempts,
+                2u64.pow(attempts)
+            );
             if attempts >= max_attempts {
+                tracing::error!(
+                    "Max retry attempts reached for sentence '{}', returning original",
+                    text
+                );
                 return Ok(text.to_string());
             }
             let wait_secs = 2u64.pow(attempts);
@@ -177,6 +187,10 @@ pub async fn translate_sentence(
         }
 
         if !status_code.is_success() {
+            tracing::error!(
+                "Translation API returned error status {}: returning original text",
+                status_code
+            );
             return Ok(text.to_string());
         }
 
@@ -187,6 +201,11 @@ pub async fn translate_sentence(
             let raw_output = res.output;
             return Ok(fix_punctuation(text, &raw_output, &tgt));
         } else {
+            tracing::error!(
+                "Translation response status not successful for '{}': {:?}",
+                text,
+                res.message_type
+            );
             return Ok(text.to_string());
         }
     }
@@ -218,11 +237,14 @@ pub async fn translate_text_parallel(
 
                 match translate_sentence(trimmed, source, target).await {
                     Ok(translated) => format!("{}{}", translated, trailing_ws),
-                    Err(_) => sentence,
+                    Err(e) => {
+                        tracing::error!("Translation failed for sentence '{}': {}", trimmed, e);
+                        sentence
+                    }
                 }
             }
         })
-        .buffer_unordered(50)
+        .buffered(50)
         .collect::<Vec<String>>()
         .await;
 
