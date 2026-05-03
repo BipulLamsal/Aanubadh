@@ -16,27 +16,25 @@ RUN npm run build
 # ─────────────────────────────────────────────
 # Stage 2: Build the Rust backend
 # ─────────────────────────────────────────────
-FROM rust:1.86-bookworm AS backend-builder
+FROM rust:alpine AS backend-builder
+
+# Install build dependencies for Alpine
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev gcc
 
 WORKDIR /app
 
-# Copy Cargo files first for dependency caching
+# Copy source and build
 COPY Cargo.toml Cargo.lock ./
-# Create a dummy main.rs so cargo can fetch dependencies
-RUN mkdir src && echo "fn main() {}" > src/main.rs && cargo build --release && rm -rf src
-
-# Copy real source and rebuild
 COPY src/ src/
-RUN touch src/main.rs && cargo build --release
+RUN cargo build --release
 
 # ─────────────────────────────────────────────
 # Stage 3: Final minimal runtime image
 # ─────────────────────────────────────────────
-FROM debian:bookworm-slim
+FROM alpine:latest
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+# Install runtime dependencies for Alpine
+RUN apk add --no-cache ca-certificates libgcc openssl
 
 WORKDIR /app
 
