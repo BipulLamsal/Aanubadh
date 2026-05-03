@@ -46,9 +46,6 @@ COPY --from=backend-builder /app/target/release/tmt ./tmt
 # Copy the built frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
-# Copy test files if they exist (optional, for demo)
-COPY test_file[s]/ ./frontend/dist/test_files/
-
 # Create directory for translated files
 RUN mkdir -p translated_files
 
