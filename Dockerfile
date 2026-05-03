@@ -13,10 +13,9 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# ─────────────────────────────────────────────
 # Stage 2: Build the Rust backend
 # ─────────────────────────────────────────────
-FROM rust:latest AS backend-builder
+FROM rust:bookworm AS backend-builder
 
 # Install build dependencies for Debian
 RUN apt-get update && apt-get install -y \
