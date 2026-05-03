@@ -50,7 +50,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     fonts-dejavu \
     fonts-liberation \
     fonts-noto-core \
-    fonts-noto-ui-devanagari \
+    fonts-noto-ui-core \
     fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
