@@ -1,16 +1,24 @@
-# React + Vite
+# Aanubadh Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+The frontend for Aanubadh, a Trusted Disaster Information Summarization and Translation Platform. It provides a sleek, modern, and responsive user interface for uploading documents and viewing real-time translations side-by-side.
 
-Currently, two official plugins are available:
+## Features
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- **Side-by-side Preview**: Upload PDF, DOCX, CSV, or TXT files and instantly view the original alongside its translation.
+- **Dynamic Theming**: First-class support for both Light and Dark modes with a built-in switcher.
+- **Drag & Drop**: Modern drag-and-drop file upload zone.
+- **Test Files**: Included test files for quick pipeline verification directly from the sidebar.
 
-## React Compiler
+## Running the Frontend
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+To run the frontend locally for development, ensure you have Node.js and npm installed, then execute the following commands from the `frontend` directory:
 
-## Expanding the ESLint configuration
+```bash
+# Install dependencies
+npm install
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Start the development server
+npm run dev
+```
+
+The application will be available at `http://localhost:5173` (or the port specified in your console).
