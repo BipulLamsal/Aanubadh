@@ -10,6 +10,8 @@ use crate::pdf;
 use crate::csv;
 use crate::txt;
 
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub async fn translate(mut multipart: Multipart) -> Response {
     let mut file_data: Option<Vec<u8>> = None;
     let mut file_name: Option<String> = None;
@@ -102,16 +104,56 @@ async fn handle_docx(
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
+    // Clean up old translated files (older than 1 hour)
+    cleanup_old_files("translated_files", 3600);
+
     // processing document
     let output_data = docx::process_docx_translation(file_data, src, tgt)
         .await
         .map_err(|e| e.to_string())?;
 
-    Ok(file_response(
+    // Save the translated file publicly so Microsoft Viewer can access it
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let safe_name = original_name
+        .chars()
+        .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
+        .collect::<String>();
+    let public_filename = format!("{}_{}", timestamp, safe_name);
+    let public_path = format!("translated_files/{}", public_filename);
+
+    std::fs::write(&public_path, &output_data).map_err(|e| e.to_string())?;
+    tracing::info!(path = %public_path, "saved translated DOCX for public access");
+
+    // Build response with the public file path in a header
+    let mut response = file_response(
         output_data,
         &format!("translated_{}", original_name),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    ))
+    );
+    response.headers_mut().insert(
+        "X-Translated-File-Path",
+        HeaderValue::from_str(&format!("/files/{}", public_filename)).unwrap(),
+    );
+
+    Ok(response)
+}
+
+fn cleanup_old_files(dir: &str, max_age_secs: u64) {
+    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    for entry in entries.flatten() {
+        if let Ok(meta) = entry.metadata() {
+            if let Ok(modified) = meta.modified() {
+                if let Ok(age) = SystemTime::now().duration_since(modified) {
+                    if age.as_secs() > max_age_secs {
+                        let _ = std::fs::remove_file(entry.path());
+                    }
+                }
+            }
+        }
+    }
 }
 
 async fn handle_pdf(

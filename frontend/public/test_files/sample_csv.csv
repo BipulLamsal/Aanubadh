@@ -1,0 +1,16 @@
+id,name,age,gender,city,category,salary,years_experience,rating,employed
+1,Alice Sharma,28,Female,Kathmandu,Engineering,75000,5,4.8,Yes
+2,Bikash Thapa,34,Male,Pokhara,Marketing,52000,9,3.9,Yes
+3,Clara Rai,22,Female,Lalitpur,Design,41000,1,4.2,Yes
+4,Dipesh Magar,45,Male,Biratnagar,Engineering,98000,20,4.6,Yes
+5,Elina Gurung,30,Female,Butwal,HR,47000,6,3.7,Yes
+6,Farhan Ansari,27,Male,Kathmandu,Marketing,49000,3,4.0,No
+7,Gita Tamang,39,Female,Dharan,Finance,63000,14,4.5,Yes
+8,Hari Adhikari,52,Male,Bhaktapur,Management,110000,25,4.9,Yes
+9,Isha Karki,24,Female,Pokhara,Design,38000,2,3.5,No
+10,Jeevan Lama,31,Male,Lalitpur,Finance,67000,7,4.1,Yes
+11,Kabita Shrestha,29,Female,Kathmandu,Engineering,80000,6,4.7,Yes
+12,Lokesh Bista,41,Male,Butwal,HR,55000,16,3.8,Yes
+13,Manisha Pandey,26,Female,Biratnagar,Marketing,44000,2,4.3,No
+14,Nabin Khadka,36,Male,Dharan,Engineering,91000,11,4.6,Yes
+15,Ojha Sunita,33,Female,Bhaktapur,Finance,61000,8,4.0,Yes

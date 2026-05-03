@@ -1,0 +1,48 @@
+@import "tailwindcss";
+
+@layer base {
+  body { 
+    font-family: 'Plus Jakarta Sans', sans-serif; 
+    background-color: #050505; 
+    color: #fff; 
+  }
+}
+
+@layer components {
+  .upload-zone { 
+    border: 2px dashed rgba(255,255,255,0.2); 
+    background: rgba(255,255,255,0.03); 
+    transition: all 0.3s; 
+  }
+  .upload-zone.dragover, .upload-zone:hover { 
+    border-color: rgba(139,92,246,0.8); 
+    background: rgba(139,92,246,0.05); 
+  }
+  .doc-preview table { 
+    border-collapse: collapse; 
+    width: 100%; 
+    color: black; 
+  }
+  .doc-preview th, .doc-preview td { 
+    border: 1px solid #ddd; 
+    padding: 8px; 
+    text-align: left; 
+  }
+  .doc-preview { 
+    background: white; 
+    color: black; 
+    border-radius: 8px; 
+    font-family: sans-serif; 
+    height: 100%; 
+    overflow: auto; 
+  }
+  .doc-preview-wrapper { 
+    flex: 1; 
+    height: 100%; 
+    display: flex; 
+    flex-direction: column; 
+    overflow: hidden; 
+    background: #e5e7eb; 
+    border-radius: 0.5rem; 
+  }
+}
