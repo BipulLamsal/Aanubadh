@@ -42,15 +42,45 @@ pub async fn translate_pdf(
     std::fs::write(&docx_xlated_path, &translated_docx)?;
 
     // generating final translated pdf file
-    let py_docx2pdf = format!(
-        "from docx2pdf import convert; convert(r'{}', r'{}')",
-        docx_xlated_path.to_str().unwrap(), pdf_output_path.to_str().unwrap()
-    );
-    let s2 = std::process::Command::new("python3")
-        .args(["-c", &py_docx2pdf]).status()?;
+    #[cfg(target_os = "windows")]
+    {
+        let py_docx2pdf = format!(
+            "from docx2pdf import convert; convert(r'{}', r'{}')",
+            docx_xlated_path.to_str().unwrap(), pdf_output_path.to_str().unwrap()
+        );
+        let s2 = std::process::Command::new("python")
+            .args(["-c", &py_docx2pdf]).status()?;
+        if !s2.success() {
+            return Err("docx2pdf failed".into());
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        // LibreOffice headless conversion: libreoffice --headless --convert-to pdf --outdir <dir> <file>
+        // We use the same directory as the input docx to easily find the output pdf
+        let temp_dir_path = docx_xlated_path.parent().ok_or("Invalid temp path")?;
         
-    if !s2.success() {
-        return Err("docx2pdf failed".into());
+        let s2 = std::process::Command::new("libreoffice")
+            .args([
+                "--headless",
+                "--convert-to", "pdf",
+                "--outdir", temp_dir_path.to_str().unwrap(),
+                docx_xlated_path.to_str().unwrap()
+            ])
+            .status()?;
+        
+        if !s2.success() {
+            return Err("libreoffice conversion failed".into());
+        }
+
+        // LibreOffice generates <filename>.pdf in the output directory
+        let generated_pdf = docx_xlated_path.with_extension("pdf");
+        if generated_pdf.exists() {
+            std::fs::rename(generated_pdf, pdf_output_path)?;
+        } else {
+            return Err("libreoffice failed to produce output pdf".into());
+        }
     }
 
     Ok(())

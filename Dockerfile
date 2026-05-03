@@ -39,24 +39,33 @@ RUN cargo build --release
 FROM python:3.11-slim-bookworm
 
 # Install runtime dependencies
-# We need libreoffice for docx2pdf to work on Linux
+# We need libreoffice-writer for docx -> pdf conversion
 # And fonts for Nepali/Tamang support
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libssl-dev \
-    libreoffice \
+    libreoffice-writer-nogui \
+    libreoffice-java-common \
+    default-jre-headless \
     fonts-dejavu \
     fonts-liberation \
     fonts-noto-core \
+    fonts-noto-ui-devanagari \
+    fontconfig \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python libraries for PDF translation
-RUN pip install --no-cache-dir pdf2docx docx2pdf
+# docx2pdf is not needed on Linux since we use libreoffice directly in Rust
+RUN pip install --no-cache-dir pdf2docx
 
 WORKDIR /app
 
 # Copy the compiled binary from backend-builder
 COPY --from=backend-builder /app/target/release/tmt ./tmt
+
+# Copy local font for Nepali/Tamang support
+COPY NotoSansDevanagari-Regular.ttf /usr/share/fonts/truetype/noto/
+RUN fc-cache -f -v
 
 # Copy the built frontend
 COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
