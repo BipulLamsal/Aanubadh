@@ -16,7 +16,7 @@ RUN npm run build
 # ─────────────────────────────────────────────
 # Stage 2: Build the Rust backend
 # ─────────────────────────────────────────────
-FROM rust:1.85-bookworm AS backend-builder
+FROM rust:latest AS backend-builder
 
 # Install build dependencies for Debian
 RUN apt-get update && apt-get install -y \
@@ -29,6 +29,8 @@ WORKDIR /app
 # Copy source and build
 COPY Cargo.toml Cargo.lock ./
 COPY src/ src/
+ENV CARGO_BUILD_JOBS=1
+ENV CARGO_NET_GIT_FETCH_WITH_CLI=true
 RUN cargo build --release
 
 # ─────────────────────────────────────────────
