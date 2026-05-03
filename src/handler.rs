@@ -104,38 +104,16 @@ async fn handle_docx(
     tgt: Language,
     original_name: String,
 ) -> Result<Response, String> {
-    // Clean up old translated files (older than 1 hour)
-    cleanup_old_files("translated_files", 3600);
-
     // processing document
     let output_data = docx::process_docx_translation(file_data, src, tgt)
         .await
         .map_err(|e| e.to_string())?;
 
-    // Save the translated file publicly so Microsoft Viewer can access it
-    let timestamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis();
-    let safe_name = original_name
-        .chars()
-        .map(|c| if c.is_alphanumeric() || c == '.' || c == '_' || c == '-' { c } else { '_' })
-        .collect::<String>();
-    let public_filename = format!("{}_{}", timestamp, safe_name);
-    let public_path = format!("translated_files/{}", public_filename);
-
-    std::fs::write(&public_path, &output_data).map_err(|e| e.to_string())?;
-    tracing::info!(path = %public_path, "saved translated DOCX for public access");
-
-    // Build response with the public file path in a header
-    let mut response = file_response(
+    // Build response directly
+    let response = file_response(
         output_data,
         &format!("translated_{}", original_name),
         "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    );
-    response.headers_mut().insert(
-        "X-Translated-File-Path",
-        HeaderValue::from_str(&format!("/files/{}", public_filename)).unwrap(),
     );
 
     Ok(response)

@@ -5,7 +5,7 @@ import '@eigenpal/docx-js-editor/styles.css';
 
 const isDeployed = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
-export default function DocumentPreview({ file, publicUrl }) {
+export default function DocumentPreview({ file }) {
   const [content, setContent] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -63,26 +63,18 @@ export default function DocumentPreview({ file, publicUrl }) {
   }
 
   if (content.type === 'docx') {
-    // If deployed and we have a public URL, use Microsoft Office Web Viewer
-    if (isDeployed && publicUrl) {
-      const viewerUrl = `https://view.officeapps.live.com/op/embed.aspx?src=${encodeURIComponent(publicUrl)}`;
-      return (
-        <iframe
-          src={viewerUrl}
-          width="100%"
-          height="100%"
-          style={{ border: 'none' }}
-          title="DOCX Preview (Microsoft Viewer)"
-        />
-      );
-    }
-
-    // Fallback: use docx-js-editor for local development
     return (
-      <div className="w-full h-full bg-white text-black overflow-hidden relative" style={{ padding: 0 }}>
-        {/* DocxEditor needs its container to be positioned properly */}
-        <div className="absolute inset-0">
-          <DocxEditor documentBuffer={content.buffer} />
+      <div className="w-full h-full bg-white text-black overflow-hidden relative flex flex-col" style={{ padding: 0 }}>
+        <div className="bg-amber-50 border-b border-amber-200 px-3 py-1.5 flex items-center gap-2 shrink-0">
+          <span className="material-symbols-outlined text-amber-600 text-[16px]">info</span>
+          <span className="text-[10px] md:text-xs text-amber-800 font-medium leading-tight">
+            Formatting, images, and layout may vary in preview. Download the file for the exact version.
+          </span>
+        </div>
+        <div className="flex-1 relative">
+          <div className="absolute inset-0">
+            <DocxEditor documentBuffer={content.buffer} />
+          </div>
         </div>
       </div>
     );
@@ -115,7 +107,29 @@ export default function DocumentPreview({ file, publicUrl }) {
 
   if (content.type === 'pdf') {
     return (
-      <iframe src={content.url} width="100%" height="100%" style={{ border: 'none' }} title="PDF Preview"></iframe>
+      <div className="w-full h-full flex flex-col bg-[#1a1a1a]">
+        <iframe 
+          src={content.url} 
+          width="100%" 
+          height="100%" 
+          style={{ border: 'none' }} 
+          title="PDF Preview"
+          className="flex-1"
+        ></iframe>
+        
+        {/* Mobile helper: iframe often fails for local blobs on mobile */}
+        <div className="p-3 bg-black/40 border-t border-white/10 flex items-center justify-between">
+          <span className="text-xs text-slate-400">Preview not loading? </span>
+          <a 
+            href={content.url} 
+            target="_blank" 
+            rel="noopener noreferrer"
+            className="text-xs font-bold text-violet-400 hover:text-violet-300 flex items-center gap-1"
+          >
+            Open in Tab
+          </a>
+        </div>
+      </div>
     );
   }
 

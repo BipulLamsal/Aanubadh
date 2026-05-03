@@ -16,10 +16,13 @@ RUN npm run build
 # ─────────────────────────────────────────────
 # Stage 2: Build the Rust backend
 # ─────────────────────────────────────────────
-FROM rust:alpine AS backend-builder
+FROM rust:1.85-bookworm AS backend-builder
 
-# Install build dependencies for Alpine
-RUN apk add --no-cache musl-dev pkgconfig openssl-dev gcc
+# Install build dependencies for Debian
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -29,16 +32,29 @@ COPY src/ src/
 RUN cargo build --release
 
 # ─────────────────────────────────────────────
-# Stage 3: Final minimal runtime image
+# Stage 3: Final Runtime Image
 # ─────────────────────────────────────────────
-FROM alpine:latest
+# Using python slim as base for pdf2docx and docx2pdf
+FROM python:3.11-slim-bookworm
 
-# Install runtime dependencies for Alpine
-RUN apk add --no-cache ca-certificates libgcc openssl
+# Install runtime dependencies
+# We need libreoffice for docx2pdf to work on Linux
+# And fonts for Nepali/Tamang support
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    libssl-dev \
+    libreoffice \
+    fonts-dejavu \
+    fonts-liberation \
+    fonts-noto-core \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Python libraries for PDF translation
+RUN pip install --no-cache-dir pdf2docx docx2pdf
 
 WORKDIR /app
 
-# Copy the compiled binary
+# Copy the compiled binary from backend-builder
 COPY --from=backend-builder /app/target/release/tmt ./tmt
 
 # Copy the built frontend
@@ -46,6 +62,9 @@ COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
 
 # Create directory for translated files
 RUN mkdir -p translated_files
+
+# Ensure the app knows where to find Python
+ENV PYTHONUNBUFFERED=1
 
 # Expose the port (Render sets PORT env var)
 EXPOSE 1997

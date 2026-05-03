@@ -1,23 +1,33 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 @layer base {
   body { 
     font-family: 'Plus Jakarta Sans', sans-serif; 
-    background-color: #050505; 
-    color: #fff; 
+    @apply bg-gray-50 text-gray-900 dark:bg-[#0a0a0a] dark:text-white transition-colors duration-300;
   }
 }
 
 @layer components {
   .upload-zone { 
-    border: 2px dashed rgba(255,255,255,0.2); 
-    background: rgba(255,255,255,0.03); 
+    border: 2px dashed rgba(0,0,0,0.2); 
+    background: rgba(0,0,0,0.02); 
     transition: all 0.3s; 
   }
-  .upload-zone.dragover, .upload-zone:hover { 
-    border-color: rgba(139,92,246,0.8); 
-    background: rgba(139,92,246,0.05); 
+  .dark .upload-zone {
+    border: 2px dashed rgba(255,255,255,0.2); 
+    background: rgba(255,255,255,0.03); 
   }
+  .upload-zone.dragover, .upload-zone:hover { 
+    border-color: rgba(37, 99, 235, 0.8); /* blue-600 */
+    background: rgba(37, 99, 235, 0.05); 
+  }
+  .dark .upload-zone.dragover, .dark .upload-zone:hover {
+    border-color: rgba(59, 130, 246, 0.8); /* blue-500 */
+    background: rgba(59, 130, 246, 0.05); 
+  }
+  
   .doc-preview table { 
     border-collapse: collapse; 
     width: 100%; 
@@ -42,7 +52,7 @@
     display: flex; 
     flex-direction: column; 
     overflow: hidden; 
-    background: #e5e7eb; 
+    @apply bg-gray-200 dark:bg-[#e5e7eb];
     border-radius: 0.5rem; 
   }
 }

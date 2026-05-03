@@ -29,7 +29,7 @@ pub async fn translate_pdf(
          cv = Converter(r'{}'); cv.convert(r'{}'); cv.close()",
         pdf_input_path.to_str().unwrap(), docx_temp_path.to_str().unwrap()
     );
-    let s1 = std::process::Command::new("python")
+    let s1 = std::process::Command::new("python3")
         .args(["-c", &py_pdf2docx]).status()?;
         
     if !s1.success() {
@@ -46,7 +46,7 @@ pub async fn translate_pdf(
         "from docx2pdf import convert; convert(r'{}', r'{}')",
         docx_xlated_path.to_str().unwrap(), pdf_output_path.to_str().unwrap()
     );
-    let s2 = std::process::Command::new("python")
+    let s2 = std::process::Command::new("python3")
         .args(["-c", &py_docx2pdf]).status()?;
         
     if !s2.success() {
